@@ -1,0 +1,4 @@
+interface:
+  display_name: "Google Cloud"
+  short_description: "Cloud Run, Cloud Build, Secret Manager, and logs"
+  default_prompt: "Use  to deploy, inspect, or debug Google Cloud Run services and related GCP resources."

@@ -10,6 +10,7 @@ from asx_financials.domain.models import (
     CompanyDetails,
     IngestionExecutionResult,
     LatestIngestionRun,
+    TickerUniverseSyncResult,
 )
 
 
@@ -26,6 +27,22 @@ class StubIngestionService:
             stored_raw_payload_count=1,
             segment_failures=[],
             message="ok",
+        )
+
+
+class StubTickerUniverseService:
+    def initialize(self, command):
+        return TickerUniverseSyncResult(
+            sync_run_id="sync-1",
+            source_url=command.source_url,
+            fetched_at_utc=datetime(2026, 4, 24, tzinfo=UTC),
+            seen_count=2,
+            inserted_count=1,
+            updated_count=1,
+            reactivated_count=0,
+            deactivated_count=0,
+            invalid_count=0,
+            unchanged_count=0,
         )
 
 
@@ -71,6 +88,7 @@ def test_ingestion_endpoint_returns_success(monkeypatch) -> None:
     app = create_app()
     app.state.services = ServiceContainer(
         ingestion_service=StubIngestionService(),
+        ticker_universe_service=StubTickerUniverseService(),
         read_service=StubReadService(),
     )
 
@@ -87,6 +105,7 @@ def test_company_endpoint_returns_company(monkeypatch) -> None:
     app = create_app()
     app.state.services = ServiceContainer(
         ingestion_service=StubIngestionService(),
+        ticker_universe_service=StubTickerUniverseService(),
         read_service=StubReadService(),
     )
 
@@ -95,3 +114,21 @@ def test_company_endpoint_returns_company(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json()["company_name"] == "BHP Group Limited"
+
+
+def test_initialise_tickers_endpoint_returns_counts(monkeypatch) -> None:
+    monkeypatch.setenv("MONGODB_URI", "mongodb://localhost:27017")
+    get_settings.cache_clear()
+    app = create_app()
+    app.state.services = ServiceContainer(
+        ingestion_service=StubIngestionService(),
+        ticker_universe_service=StubTickerUniverseService(),
+        read_service=StubReadService(),
+    )
+
+    client = TestClient(app)
+    response = client.post("/tickers/initialise")
+
+    assert response.status_code == 200
+    assert response.json()["sync_run_id"] == "sync-1"
+    assert response.json()["seen_count"] == 2

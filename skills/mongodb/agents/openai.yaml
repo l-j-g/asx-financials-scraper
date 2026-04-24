@@ -1,0 +1,4 @@
+interface:
+  display_name: "MongoDB"
+  short_description: "MongoDB schema, queries, indexes, and Atlas ops"
+  default_prompt: "Use  to design or debug MongoDB schemas, queries, indexes, and Atlas connection issues."

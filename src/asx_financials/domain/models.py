@@ -14,6 +14,33 @@ class SegmentFailure:
 
 
 @dataclass(frozen=True, slots=True)
+class AsxListedCompany:
+    ticker: str
+    company_name: str
+    industry_group: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class AsxListedCompaniesFetchResult:
+    companies: list[AsxListedCompany]
+    invalid_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class TickerUniverseSyncResult:
+    sync_run_id: str
+    source_url: str
+    fetched_at_utc: datetime
+    seen_count: int
+    inserted_count: int
+    updated_count: int
+    reactivated_count: int
+    deactivated_count: int
+    invalid_count: int
+    unchanged_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class CompanyProfileSnapshot:
     source_name: str
     ticker: str

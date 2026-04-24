@@ -92,6 +92,7 @@ uv run pytest
 
 ## API
 
+- `POST /tickers/initialise`
 - `POST /ingestions/{ticker}?include_annual=true&include_quarterly=true`
 - `GET /ingestions/{ticker}`
 - `GET /companies/{ticker}`

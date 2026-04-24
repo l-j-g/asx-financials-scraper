@@ -53,6 +53,8 @@ cleanup() {
 }
 
 PROJECT_ID=""
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REGION="australia-southeast1"
 REPOSITORY="asx-financials"
 SERVICE="asx-financials-api"
@@ -208,7 +210,7 @@ else
 fi
 
 echo "Building image ${IMAGE}"
-run_gcloud "Cloud Build failed for image '${IMAGE}'." builds submit --tag "$IMAGE"
+run_gcloud "Cloud Build failed for image '${IMAGE}'." builds submit "$REPO_ROOT" --tag "$IMAGE"
 
 DEPLOY_ARGS=(
   run deploy "$SERVICE"

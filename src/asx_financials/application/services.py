@@ -2,7 +2,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from asx_financials.application.interfaces import Clock, FinancialDataProvider, FinancialDataStore
+from asx_financials.application.interfaces import (
+    Clock,
+    FinancialDataProvider,
+    FinancialDataStore,
+    TickerUniverseProvider,
+)
 from asx_financials.domain.enums import IngestionRunStatus
 from asx_financials.domain.models import (
     CompanyDetails,
@@ -10,8 +15,11 @@ from asx_financials.domain.models import (
     LatestIngestionRun,
     ProviderFetchResult,
     StatementPreview,
+    TickerUniverseSyncResult,
 )
 from asx_financials.domain.value_objects import AsxTicker
+
+DEFAULT_ASX_LISTED_COMPANIES_URL = "https://www.asx.com.au/asx/research/ASXListedCompanies.csv"
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,6 +27,11 @@ class IngestTickerCommand:
     ticker: str
     include_annual: bool = True
     include_quarterly: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class InitializeTickerUniverseCommand:
+    source_url: str = DEFAULT_ASX_LISTED_COMPANIES_URL
 
 
 class SystemClock:
@@ -128,6 +141,27 @@ class TickerIngestionService:
             )
 
         return "Ingestion completed successfully."
+
+
+class TickerUniverseInitializationService:
+    def __init__(
+        self,
+        ticker_universe_provider: TickerUniverseProvider,
+        data_store: FinancialDataStore,
+        clock: Clock,
+    ) -> None:
+        self._ticker_universe_provider = ticker_universe_provider
+        self._data_store = data_store
+        self._clock = clock
+
+    def initialize(self, command: InitializeTickerUniverseCommand) -> TickerUniverseSyncResult:
+        fetch_result = self._ticker_universe_provider.fetch(command.source_url)
+        return self._data_store.sync_ticker_universe(
+            companies=fetch_result.companies,
+            source_url=command.source_url,
+            fetched_at_utc=self._clock.utcnow(),
+            invalid_count=fetch_result.invalid_count,
+        )
 
 
 class TickerReadService:

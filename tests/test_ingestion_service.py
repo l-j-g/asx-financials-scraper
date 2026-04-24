@@ -3,10 +3,17 @@ from datetime import UTC, datetime
 
 import pytest
 
-from asx_financials.application.services import IngestTickerCommand, TickerIngestionService
+from asx_financials.application.services import (
+    InitializeTickerUniverseCommand,
+    IngestTickerCommand,
+    TickerIngestionService,
+    TickerUniverseInitializationService,
+)
 from asx_financials.domain.enums import IngestionRunStatus, StatementFrequency, StatementType
 from asx_financials.domain.models import (
     CompanyProfileSnapshot,
+    AsxListedCompaniesFetchResult,
+    AsxListedCompany,
     FinancialStatementSnapshot,
     PersistedIngestionOutcome,
     ProviderFetchResult,
@@ -36,9 +43,28 @@ class StubProvider:
         return self._result
 
 
+class StubTickerUniverseProvider:
+    def fetch(self, source_url: str) -> AsxListedCompaniesFetchResult:
+        return AsxListedCompaniesFetchResult(
+            companies=[
+                AsxListedCompany(
+                    ticker="BHP",
+                    company_name="BHP Group Limited",
+                    industry_group="Materials",
+                )
+            ],
+            invalid_count=1,
+        )
+
+
 class RecordingStore:
     def __init__(self) -> None:
         self.completions: list[dict[str, object]] = []
+        self.ticker_syncs: list[dict[str, object]] = []
+
+    def sync_ticker_universe(self, **kwargs):
+        self.ticker_syncs.append(kwargs)
+        return kwargs
 
     def start_ingestion_run(
         self,
@@ -174,3 +200,19 @@ def test_ingest_rejects_when_no_periods_selected() -> None:
                 include_quarterly=False,
             )
         )
+
+
+def test_initialize_ticker_universe_syncs_provider_rows() -> None:
+    store = RecordingStore()
+    service = TickerUniverseInitializationService(
+        StubTickerUniverseProvider(),
+        store,
+        StubClock(),
+    )
+
+    result = service.initialize(InitializeTickerUniverseCommand(source_url="https://example.test"))
+
+    assert result["source_url"] == "https://example.test"
+    assert result["fetched_at_utc"] == FIXED_NOW
+    assert result["invalid_count"] == 1
+    assert store.ticker_syncs[0]["companies"][0].ticker == "BHP"

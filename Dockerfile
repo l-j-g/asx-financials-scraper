@@ -9,11 +9,11 @@ WORKDIR /app
 RUN pip install --no-cache-dir uv
 
 COPY pyproject.toml uv.lock README.md ./
-RUN uv sync --locked --no-dev --no-install-project
+RUN uv sync --no-dev --no-install-project --upgrade-package yfinance
 
 COPY src ./src
 
-RUN uv sync --locked --no-dev
+RUN uv sync --no-dev --upgrade-package yfinance
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PORT=8080 \

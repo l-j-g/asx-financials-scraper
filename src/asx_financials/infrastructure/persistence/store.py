@@ -13,6 +13,7 @@ from pymongo.errors import DuplicateKeyError
 
 from asx_financials.domain.enums import IngestionRunStatus, StatementFrequency, StatementType
 from asx_financials.domain.models import (
+    AsxListedCompany,
     CompanyDetails,
     CompanyProfileSnapshot,
     FinancialStatementSnapshot,
@@ -22,6 +23,7 @@ from asx_financials.domain.models import (
     SegmentFailure,
     StatementAvailability,
     StatementPreview,
+    TickerUniverseSyncResult,
 )
 from asx_financials.domain.value_objects import AsxTicker
 
@@ -55,6 +57,125 @@ class MongoFinancialDataStore:
     @property
     def _raw_source_payloads(self) -> Collection:
         return self._database["raw_source_payloads"]
+
+    @property
+    def _ticker_universe_sync_runs(self) -> Collection:
+        return self._database["ticker_universe_sync_runs"]
+
+    def sync_ticker_universe(
+        self,
+        *,
+        companies: list[AsxListedCompany],
+        source_url: str,
+        fetched_at_utc: datetime,
+        invalid_count: int = 0,
+    ) -> TickerUniverseSyncResult:
+        self._ensure_indexes_once()
+        sync_run_id = str(uuid4())
+        started_at = _utcnow()
+        seen_tickers = {company.ticker for company in companies}
+        inserted_count = 0
+        updated_count = 0
+        reactivated_count = 0
+        unchanged_count = 0
+
+        self._ticker_universe_sync_runs.insert_one(
+            {
+                "syncRunId": sync_run_id,
+                "sourceUrl": source_url,
+                "startedAt": started_at,
+                "completedAt": None,
+                "status": "running",
+                "counts": {},
+            }
+        )
+
+        for company in companies:
+            existing = self._tickers.find_one({"ticker": company.ticker})
+            if existing is None:
+                inserted_count += 1
+            elif existing.get("status") == "inactive" or not existing.get("listedOnAsx", False):
+                reactivated_count += 1
+            elif _ticker_csv_fields_changed(existing, company, source_url):
+                updated_count += 1
+            else:
+                unchanged_count += 1
+
+            self._tickers.update_one(
+                {"ticker": company.ticker},
+                {
+                    "$set": {
+                        "ticker": company.ticker,
+                        "yahooSymbol": AsxTicker(company.ticker).yahoo_symbol,
+                        "sourceName": "asx_listed_companies_csv",
+                        "companyName": company.company_name,
+                        "exchangeName": "ASX",
+                        "industryGroup": company.industry_group,
+                        "status": "active",
+                        "listedOnAsx": True,
+                        "lastSeenInAsxList": _to_utc_datetime(fetched_at_utc),
+                        "lastAsxListSyncAt": _to_utc_datetime(fetched_at_utc),
+                        "asxListSourceUrl": source_url,
+                        "updatedAt": _to_utc_datetime(fetched_at_utc),
+                    },
+                    "$unset": {"delistedDetectedAt": ""},
+                    "$setOnInsert": {
+                        "createdAt": _utcnow(),
+                        "firstSeenInAsxList": _to_utc_datetime(fetched_at_utc),
+                    },
+                },
+                upsert=True,
+            )
+
+        deactivation_filter = {
+            "lastSeenInAsxList": {"$exists": True},
+            "ticker": {"$nin": list(seen_tickers)},
+            "listedOnAsx": True,
+        }
+        deactivated_count = self._tickers.update_many(
+            deactivation_filter,
+            {
+                "$set": {
+                    "status": "inactive",
+                    "listedOnAsx": False,
+                    "delistedDetectedAt": _to_utc_datetime(fetched_at_utc),
+                    "lastAsxListSyncAt": _to_utc_datetime(fetched_at_utc),
+                    "updatedAt": _to_utc_datetime(fetched_at_utc),
+                }
+            },
+        ).modified_count
+
+        result = TickerUniverseSyncResult(
+            sync_run_id=sync_run_id,
+            source_url=source_url,
+            fetched_at_utc=fetched_at_utc,
+            seen_count=len(companies),
+            inserted_count=inserted_count,
+            updated_count=updated_count,
+            reactivated_count=reactivated_count,
+            deactivated_count=deactivated_count,
+            invalid_count=invalid_count,
+            unchanged_count=unchanged_count,
+        )
+        self._ticker_universe_sync_runs.update_one(
+            {"syncRunId": sync_run_id},
+            {
+                "$set": {
+                    "completedAt": _utcnow(),
+                    "status": "succeeded",
+                    "counts": {
+                        "seen": result.seen_count,
+                        "inserted": result.inserted_count,
+                        "updated": result.updated_count,
+                        "reactivated": result.reactivated_count,
+                        "deactivated": result.deactivated_count,
+                        "invalid": result.invalid_count,
+                        "unchanged": result.unchanged_count,
+                    },
+                }
+            },
+        )
+        return result
 
     def start_ingestion_run(
         self,
@@ -260,8 +381,12 @@ class MongoFinancialDataStore:
             return
 
         self._tickers.create_index([("ticker", ASCENDING)], unique=True)
+        self._tickers.create_index([("listedOnAsx", ASCENDING), ("ticker", ASCENDING)])
         self._tickers.create_index([("sector", ASCENDING), ("industry", ASCENDING)])
         self._tickers.create_index([("marketCap", DESCENDING)])
+
+        self._ticker_universe_sync_runs.create_index([("syncRunId", ASCENDING)], unique=True)
+        self._ticker_universe_sync_runs.create_index([("startedAt", DESCENDING)])
 
         self._ingestion_runs.create_index([("runId", ASCENDING)], unique=True)
         self._ingestion_runs.create_index([("ticker", ASCENDING), ("startedAt", DESCENDING)])
@@ -453,6 +578,19 @@ def _build_fact_documents(
             }
         )
     return documents
+
+
+def _ticker_csv_fields_changed(
+    existing: dict[str, Any],
+    company: AsxListedCompany,
+    source_url: str,
+) -> bool:
+    return (
+        existing.get("companyName") != company.company_name
+        or existing.get("industryGroup") != company.industry_group
+        or existing.get("exchangeName") != "ASX"
+        or existing.get("asxListSourceUrl") != source_url
+    )
 
 
 def _hash_payload(payload: dict[str, Any]) -> str:

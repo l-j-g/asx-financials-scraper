@@ -2,6 +2,8 @@ from datetime import datetime
 from typing import Protocol
 
 from asx_financials.domain.models import (
+    AsxListedCompany,
+    AsxListedCompaniesFetchResult,
     CompanyDetails,
     CompanyProfileSnapshot,
     FinancialStatementSnapshot,
@@ -11,6 +13,7 @@ from asx_financials.domain.models import (
     RawSourcePayload,
     SegmentFailure,
     StatementPreview,
+    TickerUniverseSyncResult,
 )
 from asx_financials.domain.value_objects import AsxTicker
 
@@ -28,7 +31,20 @@ class FinancialDataProvider(Protocol):
     ) -> ProviderFetchResult: ...
 
 
+class TickerUniverseProvider(Protocol):
+    def fetch(self, source_url: str) -> AsxListedCompaniesFetchResult: ...
+
+
 class FinancialDataStore(Protocol):
+    def sync_ticker_universe(
+        self,
+        *,
+        companies: list[AsxListedCompany],
+        source_url: str,
+        fetched_at_utc: datetime,
+        invalid_count: int = 0,
+    ) -> TickerUniverseSyncResult: ...
+
     def start_ingestion_run(
         self,
         ingestion_run_id: str,
@@ -68,6 +84,10 @@ class FinancialDataStore(Protocol):
 
 class IngestionUseCase(Protocol):
     def ingest(self, command) -> object: ...
+
+
+class TickerUniverseUseCase(Protocol):
+    def initialize(self, command) -> object: ...
 
 
 class ReadUseCase(Protocol):
