@@ -11,16 +11,13 @@ RUN pip install --no-cache-dir uv
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --locked --no-dev --no-install-project
 
-COPY alembic.ini ./
-COPY alembic ./alembic
 COPY src ./src
 
 RUN uv sync --locked --no-dev
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PORT=8080 \
-    APP_ENV=production \
-    RUN_MIGRATIONS_ON_STARTUP=false
+    APP_ENV=production
 
 EXPOSE 8080
 

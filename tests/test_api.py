@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from asx_financials.api.app import ServiceContainer, create_app
 from asx_financials.application.services import TickerReadService
+from asx_financials.config import get_settings
 from asx_financials.domain.enums import IngestionRunStatus
 from asx_financials.domain.models import (
     CompanyDetails,
@@ -64,7 +65,9 @@ class StubReadService(TickerReadService):
         )
 
 
-def test_ingestion_endpoint_returns_success() -> None:
+def test_ingestion_endpoint_returns_success(monkeypatch) -> None:
+    monkeypatch.setenv("MONGODB_URI", "mongodb://localhost:27017")
+    get_settings.cache_clear()
     app = create_app()
     app.state.services = ServiceContainer(
         ingestion_service=StubIngestionService(),
@@ -78,7 +81,9 @@ def test_ingestion_endpoint_returns_success() -> None:
     assert response.json()["ticker"] == "BHP"
 
 
-def test_company_endpoint_returns_company() -> None:
+def test_company_endpoint_returns_company(monkeypatch) -> None:
+    monkeypatch.setenv("MONGODB_URI", "mongodb://localhost:27017")
+    get_settings.cache_clear()
     app = create_app()
     app.state.services = ServiceContainer(
         ingestion_service=StubIngestionService(),

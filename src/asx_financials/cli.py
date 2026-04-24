@@ -14,8 +14,7 @@ from asx_financials.application.services import (
 from asx_financials.config import get_settings
 from asx_financials.domain.enums import IngestionRunStatus
 from asx_financials.domain.models import CompanyDetails, LatestIngestionRun, StatementPreview
-from asx_financials.infrastructure.persistence.database import create_session_factory
-from asx_financials.infrastructure.persistence.store import SqlAlchemyFinancialDataStore
+from asx_financials.infrastructure.persistence.store import create_mongo_data_store
 from asx_financials.infrastructure.providers.yfinance_provider import YFinanceProvider
 
 RESET = "\033[0m"
@@ -80,15 +79,7 @@ def main() -> None:
     include_quarterly = not args.annual_only
 
     settings = get_settings()
-    session_factory = create_session_factory(
-        settings.database_url,
-        pool_size=settings.database_pool_size,
-        max_overflow=settings.database_max_overflow,
-        pool_timeout_seconds=settings.database_pool_timeout_seconds,
-        pool_recycle_seconds=settings.database_pool_recycle_seconds,
-        connect_timeout_seconds=settings.database_connect_timeout_seconds,
-    )
-    store = SqlAlchemyFinancialDataStore(session_factory)
+    store = create_mongo_data_store(settings.mongodb_uri, settings.mongodb_database)
     provider = YFinanceProvider()
     service = TickerIngestionService(provider, store, SystemClock())
     read_service = TickerReadService(store)
