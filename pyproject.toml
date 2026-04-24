@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "asx-financials"
+version = "0.1.0"
+description = "ASX financial ingestion backend using Yahoo Finance and PostgreSQL."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+  "alembic>=1.16.0,<2.0.0",
+  "fastapi>=0.115.12,<1.0.0",
+  "pydantic-settings>=2.9.1,<3.0.0",
+  "psycopg[binary]>=3.2.9,<4.0.0",
+  "sqlalchemy>=2.0.40,<3.0.0",
+  "uvicorn[standard]>=0.34.2,<1.0.0",
+  "yfinance>=0.2.65,<1.0.0"
+]
+
+[dependency-groups]
+dev = [
+  "httpx>=0.28.1,<1.0.0",
+  "mypy>=1.15.0,<2.0.0",
+  "pytest>=8.3.5,<9.0.0",
+  "pytest-asyncio>=1.0.0,<2.0.0",
+  "ruff>=0.11.8,<1.0.0"
+]
+
+[project.scripts]
+asx-financials = "asx_financials.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/asx_financials"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "ASYNC", "RUF"]
+ignore = ["B008"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.13"
+mypy_path = ["src"]
+check_untyped_defs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+disable_error_code = ["attr-defined", "no-any-return"]
+warn_unused_configs = true
+packages = ["asx_financials"]
+
+[tool.coverage.run]
+source = ["src/asx_financials"]
